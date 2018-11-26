@@ -67,9 +67,9 @@ highcut = 999
 # BE VERY CAREFUL- as this will override any (probably correct) beam parameters that are in the
 # FITS header!!!!
 
-#user_bmaj = 2.5
-#user_bmin = 2.5
-#user_bpa = 0
+user_bmaj = 0.0
+user_bmin = 0.0
+user_bpa = 0
 
 
 ################
