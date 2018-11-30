@@ -114,9 +114,9 @@ class survey:
                 fitypix=float(source[35])
                 # The raw SAD output contains source fluxes in SNR
                 # First get the flux in the image units (Jy/beam).
-                peakflux,fitmaj,fitmin,fitpa=getknownflux(rawdata.aipsdata,fitmaj,fitmin,fitpa,fitxpix,fitypix)
+                #peakflux,fitmaj,fitmin,fitpa=getknownflux(rawdata.aipsdata,fitmaj,fitmin,fitpa,fitxpix,fitypix)
                 
-                #peakflux=pixinterp(fitxpix,fitypix,rawdata.aipsdata)
+                peakflux=pixinterp(fitxpix,fitypix,rawdata.aipsdata)
                 # If the fitting has failed, use the SAD value (snr*rms)+mean
                 if peakflux==0.0:
                     localrms = pixinterp(fitypix,fitxpix,rawdata.rmsdata)
@@ -533,7 +533,6 @@ class radio_source:
         interr=sqrt((((perr**2.0)/(self.pflux**2.0))+
                      ((ncorr)/(self.maj*self.min)*(((sizeerr[0]**2.0)/(self.maj**2.0))+
                                                    ((sizeerr[1]**2.0)/(self.min**2.0)))))*self.flux**2.0)
-        print (sizeerr[0]**2.0)/(self.maj**2.0), (sizeerr[1]**2.0)/(self.min**2.0), (ncorr)/(self.maj*self.min), (perr**2.0)/(self.pflux**2.0), self.flux
         return(perr,interr)
         
     def posnerrorcondon(self,localrms,survey):
@@ -856,7 +855,6 @@ class external_cat:
         else:
             radius=(survey_res[0]*localsource)/2.0
             matchdata=self.getmatches_external(radius)
-        print matchdata
         offsets,beamdists,raoffs,decoffs,raerrors,decerrors=[],[],[],[],[],[]
         for matches in matchdata['matches']:
             # Only single matches wanted.
@@ -865,7 +863,6 @@ class external_cat:
                 if not numpy.array(matches['source'].isresolved(matchdata['sourcesurvey'],matchdata['sourcesurvey'].sigma)).all():
                     if not numpy.array(matches['match'][0].isresolved(matchdata['matchsurvey'],matchdata['matchsurvey'].sigma)).all():
                         # >15 sigma sources (more position accuracy)
-                        print posnnumsigma
                         if matches['source'].pflux>(posnnumsigma*matchdata['sourcesurvey'].sigma):
                             if matches['match'][0].pflux>(posnnumsigma*matchdata['matchsurvey'].sigma):
                                 
@@ -1323,7 +1320,6 @@ class sad_catalogue:
                       .format(sourcedata.pflux,peakerr))
         
         # Total Flux and its error
-        print sourcedata.flux, interr, localrms
         catfile.write('{0:10.5f} {1:9.5f}    '
                       .format(sourcedata.flux,interr))
 

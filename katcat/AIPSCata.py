@@ -48,7 +48,6 @@ def Extract (inIm, outName, err):
     freq = []
     for ifreq in range(0,nspec):
         t = "FREQ%4.4d"%(ifreq+1)
-        print t,get_key_thorough(h,t)
         freq.append(float(get_key_thorough(h,t)))
 
     #Loop over planes extracting
@@ -323,14 +322,14 @@ def getknownflux(imagedata,maj,min,pa,x,y):
     majpix=abs(maj/incrx)
     minpix=abs(min/incrx)
          
-    boxhalfsize=abs((maj/incrx)/2)+3
+    boxhalfsize=abs((maj/incrx)/2.)+3.
     imfit=AIPSTask('jmfit')
     imfit.indata=image
     imfit.blc=AIPSList([int(numpy.floor(abs(x-(boxhalfsize+1)))),int(numpy.floor(abs(y-(boxhalfsize+1))))])
     imfit.trc=AIPSList([int(numpy.ceil(abs(x+(boxhalfsize+1)))),int(numpy.ceil(abs(y+(boxhalfsize+1))))])
     imfit.ngauss=1
     imfit.ctype=AIPSList([1])
-    imfit.gmax=AIPSList([0])
+    imfit.gmax=AIPSList([pixinterp(x,y,imagedata)])
     imfit.gpos=AIPSList([[x,y]])
     imfit.gwidth=AIPSList([[majpix,minpix,pa]])
     imfit.domax=AIPSList([1])
@@ -844,7 +843,6 @@ def getdr(brightcatalogue,imagedata,rms):
     imhead=image.header()
     beammajpix=imhead['beamMaj']*imhead['cdelt'][0]
     obsfreq=imhead['crval'][2] if imhead['ctype'][2] in ['FREQ     ','SPECLNMF '] else imhead['crval'][3]
-    print obsfreq
     telescope=imhead['teles']
     
     # Get the size in pixels to search around each bright source.

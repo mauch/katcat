@@ -137,7 +137,6 @@ if not 'CLEANBMJ' in fitsfile[0].header:
     fitsfile[0].header['CLEANBPA']=fitsfile[0].header.get('BPA',-1)
     fitsfile.flush()
 if user_bmaj>0.:
-    print user_bmaj, user_bmin, user_bpa
     fitsfile[0].header['CLEANBMJ']=user_bmaj / 3600.
     fitsfile[0].header['CLEANBMN']=user_bmin / 3600.
     fitsfile[0].header['CLEANBPA']=user_bpa
@@ -199,7 +198,6 @@ if beammaj<=0.0 or beammin<=0.0:
 # Image pixel increment in incr1,2; length of axis size1,2;
 # center pixel cent1,2; axis info in axistype1,2.;
 # observing frequency obsfreq
-print imhead
 incr1 = imhead['cdelt'][0] * 3600.0
 incr2 = imhead['cdelt'][1] * 3600.0
 size1 = imhead['inaxes'][0]
@@ -212,9 +210,6 @@ if 'FREQ     ' in imhead['ctype'][2] or 'SPECLNMF ' in imhead['ctype'][2]:
     freq = imhead['crval'][2]
 else:
     freq = imhead['crval'][3]
-
-
-print freq
 
 # Size of the beam in pixels.
 beammajpix = abs(beammaj/incr1)
