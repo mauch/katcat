@@ -388,7 +388,7 @@ outfiles.append(options.outputdir + '/' + inname + '_MSUB.fits')
 sadcatout = options.outputdir + '/' + random_filename(length=8,suffix='.sad')
 
 residdata = ['IMAGE', 'RED', 1, 1]
-imsadrms(meansubimagedata,rmsimagedata,cutoff,outname=sadcatout,uppercut=[4.0*cutoff],
+imsadrms(meansubimagedata,rmsimagedata,cutoff,outname=sadcatout,uppercut=[1.0*cutoff],
       gain=gain,icut=ifact*cutoff,resid=1,maxwidth=maxfitwidth*beammajpix,residdata=residdata)
 #residdata = ['IMAGE', 'RED', 1, 1]
 #findsou(sadimagedata,cutoff,err, outname=sadcatout,uppercut=[],
