@@ -108,13 +108,13 @@ SUMSScompare = [1,1,1]
 
 dorms = 1  #If =1 then output the rms model image.
 
-rmsbox = 60 #The size of the box (in beams) used to comput the rms noise per pixel.
+rmsbox = 100 #The size of the box (in beams) used to comput the rms noise per pixel.
 
-gain = 0.3  #For sad
+gain = 0.05  #For sad
 
-ifact = 10 #(ifact*cutoff)=icut (for sad)
+ifact = 0.0 #(ifact*cutoff)=icut (for sad)
 
-maxfitwidth = 10 #Largest source to fit in beams.
+maxfitwidth = 5 #Largest source to fit in beams.
 
 mindr = 50 #The minimum acceptable local dynamic range (sources above this next to bright sources will end up in the catalogue)
  

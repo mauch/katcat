@@ -58,6 +58,7 @@ import sys
 import time
 import math
 import warnings
+import numpy as np
 from time import strptime
 from time import sleep
 from math import *
@@ -96,6 +97,7 @@ from katcat.makeplots import *
 from katcat.catalogue import *
 from katcat.AIPSCata import *
 import katcat.AIPSSetup as AIPSSetup
+from katcat import makemeanrms
 #
 # Parse command line options
 #
@@ -151,6 +153,11 @@ else:
 
 fitsfile.close()
 
+# Make mean and rms fits images
+print "### Generating MEAN and RMS maps ..."
+meanfitsimage, rmsfitsimage = makemeanrms.makemeanmedmap(infile)
+print "### MEAN and RMS maps in %s and %s."%(meanfitsimage, rmsfitsimage)
+
 ObitSys = AIPSSetup.AIPSSetup(options.scratchdir)
 # Use disk 1 always, and the AIPS number defined in CATparams
 err        = OErr.OErr()
@@ -165,6 +172,15 @@ scratchlist = [options.scratchdir+'/aipsdisk',options.scratchdir+'/da00']       
 imagedata=['CATFILE', 'FITS', 1, userdisk]
 image=makeaipsimage(imagedata)
 loadfitspwd(infilename,imagedata,AIPS.userno,err)
+
+# Rean in Mean and RMS maps
+meanimagedata = ['CATFILE', 'MEAN', 1, userdisk]
+rmsimagedata = ['CATFILE', 'RMS', 1, userdisk]
+loadfitspwd(meanfitsimage, meanimagedata, AIPS.userno, err)
+loadfitspwd(rmsfitsimage, rmsimagedata, AIPS.userno, err)
+
+rmsarray = pyfits.open(rmsfitsimage)[0].data[0,0]
+meanarray = pyfits.open(meanfitsimage)[0].data[0,0]
 
 #subim out the 1st plane to work on
 imagedata=getplane(imagedata,1)
@@ -210,7 +226,7 @@ if 'FREQ     ' in imhead['ctype'][2] or 'SPECLNMF ' in imhead['ctype'][2]:
     freq = imhead['crval'][2]
 else:
     freq = imhead['crval'][3]
-
+obsfreq= freq
 # Size of the beam in pixels.
 beammajpix = abs(beammaj/incr1)
 beamminpix = abs(beammin/incr2)
@@ -244,6 +260,10 @@ if options.pbcor:
 else:
     pbcorimagedata=imagedata
 
+# Subtract the mean image from the image to use as the work image
+meansubimagedata = ['CATFILE', 'MEANS', 1, 1]
+imcombine(imagedata,meanimagedata,meansubimagedata,'SUM',[1,-1,0,0,0,0,0,-1,0,0])
+imagedata = meansubimagedata
 
 # Get the image rms in a 20% circular region in the center of the image.
 rmsradius = int(min((size1,size2))*0.1)
@@ -258,90 +278,108 @@ globalrmsdata = ['GLOBRMS', 'GLOB', 1, 1]
 immath(imagedata,globalmeandata,'POLY',[imagemean,0,0,0])
 immath(imagedata,globalrmsdata,'POLY',[imagerms,0,0,0])
 
+globalrmsarray = np.ones_like(rmsarray) * imagerms
+globalmeanarray = np.ones_like(meanarray) * imagemean
+
 # Get the maximum pixel in the pbcor image.
 maxpix=getimmax(pbcorimagedata,options.outputdir+'/')
 keepraw=1
 modelrmsimagedata = ['RMSMODEL','RMS',1,1]
+
+
 # Create an rms image and a mean image from the input image,
 # using rmsd in AIPS. Box size is defined (in beams) in CATparams.py
-immath(imagedata,modelrmsimagedata,'POLY',[-imagemean,1/imagerms,0,0])
+#immath(imagedata,modelrmsimagedata,'POLY',[-imagemean,1,0,0])
 
 # Run IMSAD with cutoff=highcut to get list of bright sources
+# Bsource area
+# Use 50% of the image
+imarea=0.25
+boffset1 = int(size1*imarea)
+boffset2 = int(size2*imarea)
+bblc = [cent1-boffset1,cent2-boffset2]
+btrc = [cent1+boffset1,cent2+boffset2]
 sadfilename = options.outputdir + '/' + random_filename(length=8,suffix='.sad')
-imsad(modelrmsimagedata,highcut,outname=sadfilename,
-      maxwidth=maxfitwidth*beammajpix,gain=gain,icut=highcut*ifact)
+imsad(imagedata,highcut*imagerms, outname=sadfilename,
+      maxwidth=maxfitwidth*beammajpix, gain=gain, icut=highcut*ifact)
 sadfile = open(sadfilename, 'r')
 brightsources = file(sadfile)
 sadfile.close()
 scratchlist.append(sadfilename)
 
 # Make a 'catalogue' object out of the bright sources and the global images.
-brightcatalogue = sad_catalogue(infile,pbcorimagedata,globalrmsdata,
-                                globalmeandata,brightsources,maxfitwidth,imagerms)
+brightcatalogue = sad_catalogue(infile,imagedata,globalrmsarray,
+                                globalmeanarray,brightsources,maxfitwidth,imagerms)
  
 # Get the image local dynamic range around the bright sources.
-localwidth,localdr,numsources=getdr(brightcatalogue,modelrmsimagedata,imagerms)
-numsources=0
-if numsources==0:
-    localdr=maxpix/imagerms
-
+# Pad the image area
+#pimarea=min(imarea+0.1,0.5)
+#poffset1 = int(size1*imarea)
+#poffset2 = int(size2*imarea)
+#pblc = [cent1-boffset1,cent2-boffset2]
+#ptrc = [cent1+boffset1,cent2+boffset2]
+#localwidth,localdr,numsources=getdr(brightcatalogue,imagedata,imagerms,err,blc=pblc,trc=ptrc)
+#numsources=0
+#if numsources==0:
+#localdr=maxpix/imagerms
+numsources=10
 # Create an rms image and a mean image from the input image,
 # using rmsd in AIPS. Box size is defined (in beams) in CATparams.py
-rmsimagedata,meanimagedata = makermsimage(imagedata,[random_filename(length=8),'TMP', 1, 1],rmsboxsize,debug)
+#rmsimagedata,meanimagedata = makermsimage(imagedata,[random_filename(length=8),'TMP', 1, 1],rmsboxsize,debug)
         
-rmspbcorimagedata,meanpbcorimagedata = makermsimage(pbcorimagedata,[random_filename(length=8),'TMP', 1, 1],rmsboxsize,debug)
+#rmspbcorimagedata,meanpbcorimagedata = makermsimage(pbcorimagedata,[random_filename(length=8),'TMP', 1, 1],rmsboxsize,debug)
 
-
+localdr=2500.0
+localwidth=100.0
 # Add the bright source model to the rms image. We use a gaussian with
 # width that is 3% of the primary beam of the telescope and amplitude
 # given by the local dynamic range at the posoiton of
 # each bright source.
-#widtharcsec = fov(obsfreq,telescope)[2]*localwidth
-#widthpixels = fabs(localwidth/2.0)
-#for source,catsource in zip(brightcatalogue.rawdata,brightcatalogue.sourcedata):
-#    print widthpixels,catsource.pflux,localdr,localwidth,imagerms
-#    xpix = float(source[-4])
-#    ypix = float(source[-3])
-#    fittedmax = float(source[10])
-#    amplitude = (((catsource.pflux/localdr)*noisefact)/1000.0)-imagerms
-#    print amplitude,catsource.pflux,localdr,noisefact,imagerms
-#    width = [widthpixels,widthpixels,0.0]
-#    rmsimagedata = addsource(xpix,ypix,amplitude,width,rmsimagedata)
+widtharcsec = fov(obsfreq,telescope)[2]*localwidth
+widthpixels = fabs(localwidth/2.0)
+for source,catsource in zip(brightcatalogue.rawdata,brightcatalogue.sourcedata):
+    #print widthpixels,catsource.pflux,localdr,localwidth,imagerms
+    xpix = float(source[-4])
+    ypix = float(source[-3])
+    fittedmax = float(source[10])
+    amplitude = ((catsource.pflux/localdr)*noisefact)/1000.0#-imagerms
+    #print amplitude,catsource.pflux,localdr,noisefact,imagerms
+    width = [widthpixels,widthpixels,0.0]
+    rmsimagedata = addsource(xpix,ypix,amplitude,width,rmsimagedata)
 #exit(-1)
+outfile=options.outputdir + '/' + random_filename()
+fitsout(rmsimagedata,outfile)
+os.rename(outfile,options.outputdir + '/' + inname + '_RMSCORR.FITS')
+outfiles.append(options.outputdir + '/' + inname + '_RMSCORR.FITS')
 
 # Write out the rms model image.
-if debug>0 or dorms>0:
-    try:
-        outfile=options.outputdir + '/' + random_filename()
-        fitsout(rmsimagedata,outfile)
-        os.rename(outfile,options.outputdir + '/' + inname + '_RMS.FITS')
-        outfiles.append(options.outputdir + '/' + inname + '_RMS.FITS')
-    except:
-        print '**** Skipping MODELIMAGE.FITS'
+#if debug>0 or dorms>0:
+#    try:
+#        outfile=options.outputdir + '/' + random_filename()
+#        fitsout(rmsimagedata,outfile)
+#        os.rename(outfile,options.outputdir + '/' + inname + '_RMS.FITS')
+#        outfiles.append(options.outputdir + '/' + inname + '_RMS.FITS')
+#        outfile=options.outputdir + '/' + random_filename()
+#        fitsout(meanimagedata,outfile)
+#        os.rename(outfile,options.outputdir + '/' + inname + '_MEAN.FITS')
+#        outfiles.append(options.outputdir + '/' + inname + '_MEAN.FITS')
+#    except:
+#        print '**** Skipping MODELIMAGE.FITS'
 
-# Now subtract the mean from the input image and divide by the rms
+# Now divide by the rms
 # in the imput image to prepare an image that will be catalogued.
-meansubimagedata = ['CATFILE', 'MEANS', 1, 1]
-imcombine(imagedata,meanimagedata,meansubimagedata,'SUM',[1,-1,0,0,0,0,0,-1,0,0])
-sadimagedata = ['CATFILE','RMSD',1,1]
-imcombine(meansubimagedata,rmsimagedata,sadimagedata,'DIV',[1,0,0,0,0,0,0,-1,0,0])
+#sadimagedata = ['CATFILE','RMSD',1,1]
+#imcombine(meansubimagedata,rmsimagedata,sadimagedata,'DIV',[1,0,0,0,0,0,0,-1,0,0])
 
-# Write out the mean subtracted and rms divided images if debugging.
-if debug>0:
-    try:
-        outfile=options.outputdir + '/' + random_filename()
-        fitsout(sadimagedata,outfile)
-        os.rename(outfile,options.outputdir + '/SADIMAGE.FITS')
-        outfiles.append(options.outputdir + '/SADIMAGE.FITS')
-    except:
-        print '**** Skipping SADIMAGE.FITS'
-    try:
-        outfile=options.outputdir + '/' + random_filename()
-        fitsout(meansubimagedata,outfile)
-        os.rename(outfile,options.outputdir + '/MEANSUBIMAGE.FITS')
-        outfiles.append(options.outputdir + '/MEANSUBIMAGE.FITS')
-    except:
-        print '**** Skipping MEANSUBIMAGE.FITS'
+# Write out the mean subtracted and rms divided images.
+outfile=options.outputdir + '/' + random_filename()
+#fitsout(sadimagedata, outfile)
+#os.rename(outfile, options.outputdir + '/' + inname + '_SN.fits')
+#outfiles.append(options.outputdir + '/' + inname + '_SN.fits')
+#outfile=options.outputdir + '/' + random_filename()
+fitsout(meansubimagedata, outfile)
+os.rename(outfile,options.outputdir + '/' + inname + '_MSUB.fits')
+outfiles.append(options.outputdir + '/' + inname + '_MSUB.fits')
 
 # Now produce the catalogue using the AIPS task SAD. Which is run
 # on the mean subtracted, rms divided image and gives sources in
@@ -349,8 +387,20 @@ if debug>0:
 # (or directly from the model image) later on to obtain fluxes in Janskys.
 sadcatout = options.outputdir + '/' + random_filename(length=8,suffix='.sad')
 
-imsad(sadimagedata,cutoff,outname=sadcatout,uppercut=[],
-      gain=gain,icut=ifact*cutoff,maxwidth=maxfitwidth*beammajpix)
+residdata = ['IMAGE', 'RED', 1, 1]
+imsadrms(meansubimagedata,rmsimagedata,cutoff,outname=sadcatout,uppercut=[4.0*cutoff],
+      gain=gain,icut=ifact*cutoff,resid=1,maxwidth=maxfitwidth*beammajpix,residdata=residdata)
+#residdata = ['IMAGE', 'RED', 1, 1]
+#findsou(sadimagedata,cutoff,err, outname=sadcatout,uppercut=[],
+#      gain=gain,icut=ifact*cutoff,maxwidth=maxfitwidth*beammajpix,
+#      resid=1,residdata=residdata)
+outfile=options.outputdir + '/' + random_filename()
+fitsout(residdata, outfile)
+os.rename(outfile,options.outputdir + '/' + inname + '_RESID.fits')
+outfiles.append(options.outputdir + '/' + inname + '_RESID.fits')
+#fitsout(sadimagedata, outfile)
+#os.rename(outfile,options.outputdir + '/' + inname + '_CATIMAGE.fits')
+#outfiles.append(options.outputdir + '/' + inname + '_CATIMAGE.fits')
 
 # Place the sad output into 'sadoutput' object.
 sadfile = open(sadcatout, 'r')
@@ -358,21 +408,21 @@ sadoutput = file(sadfile)
 sadfile.close()
 
 # Copy the sad file to its final name if the user wants it.
-if keepsad>0:
-    sadfilename = options.outputdir + '/' + inname +'.sad'
-    os.rename(sadcatout,sadfilename)
-    outfiles.append(sadfilename)
-    print '**** AIPS: SAD output stored in: '+sadfilename
-else:
-    scratchlist.append(sadcatout)
-    print '**** SAD output file removed'
+#if keepsad>0:
+sadfilename = options.outputdir + '/' + inname +'.sad'
+os.rename(sadcatout,sadfilename)
+outfiles.append(sadfilename)
+print '**** AIPS: SAD output stored in: '+sadfilename
+#else:
+#    scratchlist.append(sadcatout)
+#    print '**** SAD output file removed'
 
 
 
 
 # Construct a catalogue object from the sad output
-# AT this point JMfit is run to get accurate flux densities.
-catalogue=sad_catalogue(infile,pbcorimagedata,rmspbcorimagedata,meanpbcorimagedata,sadoutput,maxfitwidth,imagerms,fluxlimit=fluxcutoff)
+# AT this point JMfit is run to get accurate flux densities. **Not any more ***
+catalogue=sad_catalogue(infile,imagedata,rmsarray,meanarray,sadoutput,maxfitwidth,imagerms,fluxlimit=fluxcutoff)
 
 # Write a raw catalogue if the user wants it.
 if keepraw>0:

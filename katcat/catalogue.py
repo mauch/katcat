@@ -102,7 +102,6 @@ class survey:
     # constructed from the raw data
     # 
     def makearray(self,rawdata):
-
         if self.id=='SAD':
             catdata=[]
             for source in rawdata.rawdata:
@@ -112,23 +111,29 @@ class survey:
                 fitpa=float(source[18])
                 fitxpix=float(source[34])
                 fitypix=float(source[35])
+                peakflux=float(source[10])
+                intflux=float(source[12])
                 # The raw SAD output contains source fluxes in SNR
                 # First get the flux in the image units (Jy/beam).
                 #peakflux,fitmaj,fitmin,fitpa=getknownflux(rawdata.aipsdata,fitmaj,fitmin,fitpa,fitxpix,fitypix)
                 
-                peakflux=pixinterp(fitxpix,fitypix,rawdata.aipsdata)
+                #peakflux=pixinterp(fitxpix,fitypix,rawdata.aipsdata)
                 # If the fitting has failed, use the SAD value (snr*rms)+mean
-                if peakflux==0.0:
-                    localrms = pixinterp(fitypix,fitxpix,rawdata.rmsdata)
-                    localmean = pixinterp(fitypix,fitxpix,rawdata.meandata)
-                    peakflux = (float(source[10])*localrms) + localmean
+                #if peakflux==0.0:
+                #    localrms = pixinterp(fitypix,fitxpix,rawdata.rmsdata)
+                #    localmean = pixinterp(fitypix,fitxpix,rawdata.meandata)
+                #    peakflux = (float(source[9])*localrms) + localmean
+                localrms = pixinterp(fitxpix,fitypix,rawdata.rmsdata)
+                localmean = pixinterp(fitxpix,fitypix,rawdata.meandata)
+                #peakflux = (peakflux*localrms)
 
                 # Jy -> mJy
-                peakflux = peakflux*1000.0
+                #peakflux = peakflux*1000.0
+                #intflux = intflux*1000.0
                 #Integrated flux = I*source_area/beam_area
                 intflux=peakflux*(fitmaj*fitmin)/(self.in_bmaj*self.in_bmin)
                 catdata.append(radio_source(int(source[2]),position(float(source[0]),float(source[1]),'dd'),
-                                            peakflux,intflux,[fitmaj,fitmin,fitpa,0]))
+                                            peakflux,intflux,[fitmaj,fitmin,fitpa,0],localrms,localmean))
         
         elif self.id=='FIRST':
             catdata=[]
@@ -136,7 +141,7 @@ class survey:
                 catdata.append(radio_source(sourcenum,position([float(source[1]),float(source[2]),float(source[3])],
                                                      [source[4][0],float(source[4]),float(source[5]),float(source[6])],'hms'),
                                             float(source[8]),float(source[9]),
-                                            [float(source[14]),float(source[15]),float(source[16]),0]))
+                                            [float(source[14]),float(source[15]),float(source[16]),0],0.0001,0.0))
 
         elif self.id=='NVSS':
             catdata=[]
@@ -146,7 +151,7 @@ class survey:
                 maj=float(source[18])
                 min=float(source[19])
                 pa=float(source[20])
-                catdata.append(radio_source(sourcenum,thispos,float(source[7]),float(source[7]),[maj,min,pa,0]))
+                catdata.append(radio_source(sourcenum,thispos,float(source[7]),float(source[7]),[maj,min,pa,0]),0.0005,0.0)
         
         elif self.id=='WENSS':
             catdata=[]
@@ -159,13 +164,13 @@ class survey:
                     pa=0.0
                 else:
                     maj,min,pa=elconv(self.resolution(thispos),[float(source[12]),float(source[13]),float(source[14])])
-                catdata.append(radio_source(sourcenum,thispos,float(source[10]),float(source[11]),[maj,min,pa,0]))
+                catdata.append(radio_source(sourcenum,thispos,float(source[10]),float(source[11]),[maj,min,pa,0]),0.004,0.0)
 
 
         elif self.id=='SUMSS':
             catdata=[radio_source(sourcenum,position([float(source[1]),float(source[2]),float(source[3])],
                                                      [source[4][0],float(source[4]),float(source[5]),float(source[6])],'hms'),
-                                  float(source[10]),float(source[12]),[float(source[14]),float(source[15]),float(source[16]),0])
+                                  float(source[10]),float(source[12]),[float(source[14]),float(source[15]),float(source[16]),0],0.0012,0.0)
                      for sourcenum,source in enumerate(rawdata)]
 
         return catdata
@@ -231,16 +236,14 @@ class survey:
 
             formatdata=[]
             for rawsource,source in zip(rawdata.rawdata,rawdata.sourcedata):
-                localrms = pixinterp(float(rawsource[34]),float(rawsource[35]),rawdata.rmsdata)
-                localmean = pixinterp(float(rawsource[34]),float(rawsource[35]),rawdata.meandata)
                 outarray=[]
                 outarray.append(int(rawsource[2]))
                 outarray.append(source.position.ra_dd)
                 outarray.append(source.position.dec_dd)
-                raerr,decerr=source.posnerrorcondon(localrms,self)
+                raerr,decerr=source.posnerrorcondon(self)
                 outarray.append(raerr)
                 outarray.append(decerr)
-                perr,interr=source.fluxerrorcondon(localrms,self)
+                perr,interr=source.fluxerrorcondon(self)
                 outarray.append(source.pflux)
                 outarray.append(perr)
                 outarray.append(source.flux)
@@ -248,15 +251,15 @@ class survey:
                 outarray.append(source.maj)
                 outarray.append(source.min)
                 outarray.append(source.pa)
-                majerr,minerr,paerr=source.sizeerrorcondon(localrms,self)
+                majerr,minerr,paerr=source.sizeerrorcondon(self)
                 outarray.append(majerr)
                 outarray.append(minerr)
                 outarray.append(paerr)
                 outarray.append(float(rawsource[34]))
                 outarray.append(float(rawsource[35]))
                 outarray.append(rawdata.fitsfile)
-                outarray.append(localrms*1000.0)
-                outarray.append(localmean*1000.0)
+                outarray.append(sourcedata.localrms)
+                outarray.append(sourcedata.localmean)
                 formatdata=formatdata+[outarray]
 
         elif self.id=='FIRST':
@@ -435,7 +438,7 @@ class position:
 
 class radio_source:
 
-    def __init__(self,id,pos,pflux,flux,size):
+    def __init__(self,id,pos,pflux,flux,size,locrms,locmean):
         self.id=id
         self.position=pos
         self.pflux=pflux
@@ -444,7 +447,8 @@ class radio_source:
         self.maj=size[0]
         self.min=size[1]
         self.pa=size[2]
-
+        self.locrms=locrms*1000.0
+        self.locmean=locmean*1000.0
 
     #
     # Check if the source is isolated with respect
@@ -465,7 +469,7 @@ class radio_source:
     #
     # Check if this source is resolved (>2.33sigma beam; 98% confidence)
     #
-    def isresolved(self,survey,sigma):
+    def isresolved(self,survey):
         dmaj=False
         dmin=False
         if self.size_is_dec>0:
@@ -475,7 +479,7 @@ class radio_source:
                 dmin=True
         else:
             beam=survey.resolution(self.position)
-            sizeerror=self.sizeerrorcondon(sigma,survey)
+            sizeerror=self.sizeerrorcondon(survey)
             majcompare=beam[0]+(2.33*sizeerror[0])
             mincompare=beam[1]+(2.33*sizeerror[1])
             dmajcomp,dmincomp,dpacomp=deconv([self.maj,self.min,self.pa],[majcompare,mincompare,beam[2]])
@@ -489,8 +493,8 @@ class radio_source:
     # Implement errors for elliptical gaussians in the presence of correlated noise
     # as per Condon (1998), MNRAS.
     #
-    def rhosqt1(self,localrms,ncorr):
-        return ((self.maj*self.min)/(4.0*ncorr)*(self.pflux**2.0)/(localrms**2.0))
+    def rhosqt1(self,ncorr):
+        return ((self.maj*self.min)/(4.0*ncorr)*(self.pflux**2.0)/(self.locrms**2.0))
     
     def rhosqt2(self,ncorr):
         return (1.0 + (ncorr)/(self.maj**2.0))
@@ -498,34 +502,34 @@ class radio_source:
     def rhosqt3(self,ncorr):
         return (1.0 + (ncorr)/(self.min**2.0))
 
-    def sizeerrorcondon(self,localrms,survey):
+    def sizeerrorcondon(self,survey):
 
         beam_maj=survey.resolution(self.position)[0]
         beam_min=survey.resolution(self.position)[1]
         ncorr=beam_maj*beam_min
-        majerr = sqrt((((self.maj**2.0)*2.0)/((self.rhosqt1(localrms,ncorr))*(self.rhosqt2(ncorr)**2.5)*(self.rhosqt3(ncorr)**0.5))))
-        minerr = sqrt((((self.min**2.0)*2.0)/((self.rhosqt1(localrms,ncorr))*(self.rhosqt2(ncorr)**0.5)*(self.rhosqt3(ncorr)**2.5))))
+        majerr = sqrt((((self.maj**2.0)*2.0)/((self.rhosqt1(ncorr))*(self.rhosqt2(ncorr)**2.5)*(self.rhosqt3(ncorr)**0.5))))
+        minerr = sqrt((((self.min**2.0)*2.0)/((self.rhosqt1(ncorr))*(self.rhosqt2(ncorr)**0.5)*(self.rhosqt3(ncorr)**2.5))))
         if self.maj==self.min:
             majcorr=self.maj+0.0001
         else:
             majcorr=self.maj
-        paerr = degrees(sqrt((4.0/((self.rhosqt1(localrms,ncorr))*(self.rhosqt2(ncorr)**2.5)*(self.rhosqt3(ncorr)**0.5)))*
+        paerr = degrees(sqrt((4.0/((self.rhosqt1(ncorr))*(self.rhosqt2(ncorr)**2.5)*(self.rhosqt3(ncorr)**0.5)))*
                              (((majcorr*self.min)/((majcorr**2.0)-(self.min**2.0)))**2.0)))
         if paerr>90:
             paerr=90
         return math.sqrt(majerr**2.0),math.sqrt(minerr**2.0),int(paerr)
         
-    def fluxerrorcondon(self,localrms,survey):
+    def fluxerrorcondon(self,survey):
         beam_maj=survey.resolution(self.position)[0]
         beam_min=survey.resolution(self.position)[1]
-        sizeerr=self.sizeerrorcondon(localrms,survey)
+        sizeerr=self.sizeerrorcondon(survey)
 
         #Noise correlation length scale
         ncorr=beam_maj*beam_min
 
         #peak error
         #print self.pflux
-        perr=sqrt((0.03*self.pflux)**2.0 + (((self.pflux**2.0)*2.0)/((self.rhosqt1(localrms,ncorr))*(self.rhosqt2(ncorr)**1.5)*(self.rhosqt3(ncorr)**1.5))))
+        perr=sqrt((0.03*self.pflux)**2.0 + (((self.pflux**2.0)*2.0)/((self.rhosqt1(ncorr))*(self.rhosqt2(ncorr)**1.5)*(self.rhosqt3(ncorr)**1.5))))
         #print perr
         #print sizeerr[0]**2.0
         #print self.maj**2.0
@@ -535,14 +539,14 @@ class radio_source:
                                                    ((sizeerr[1]**2.0)/(self.min**2.0)))))*self.flux**2.0)
         return(perr,interr)
         
-    def posnerrorcondon(self,localrms,survey):
+    def posnerrorcondon(self,survey):
         beam_maj=survey.resolution(self.position)[0]
         beam_min=survey.resolution(self.position)[1]
         ncorr=beam_maj*beam_min
         sigmaxsq = (2.0*(self.maj**2.0))/(8.0*math.log(2.0)*
-                                          (self.rhosqt1(localrms,ncorr)*(self.rhosqt2(ncorr)**2.5)*(self.rhosqt3(ncorr)**0.5)))
+                                          (self.rhosqt1(ncorr)*(self.rhosqt2(ncorr)**2.5)*(self.rhosqt3(ncorr)**0.5)))
         sigmaysq = (2.0*(self.min**2.0))/(8.0*math.log(2.0)*
-                                          (self.rhosqt1(localrms,ncorr)*(self.rhosqt2(ncorr)**0.5)*(self.rhosqt3(ncorr)**2.5)))
+                                          (self.rhosqt1(ncorr)*(self.rhosqt2(ncorr)**0.5)*(self.rhosqt3(ncorr)**2.5)))
         raerr = sqrt(sigmaxsq*(math.sin(radians(self.pa))**2.0) + sigmaysq*(math.cos(radians(self.pa))**2.0))
         decerr = sqrt(sigmaxsq*(math.cos(radians(self.pa))**2.0) + sigmaysq*(math.sin(radians(self.pa))**2.0))
         return(raerr,decerr)           
@@ -685,7 +689,7 @@ class external_cat:
         es_fluxerror_source,es_fluxerror_match,ps_fluxerror_source,ps_fluxerror_match=[],[],[],[]
         es_ramatch,es_decmatch,ps_ramatch,ps_decmatch=[],[],[],[]
         for matches in matchdata['matches']:
-            if len(matches['match'])==1 and not numpy.array(matches['source'].isresolved(matchdata['sourcesurvey'],matchdata['sourcesurvey'].sigma)).all() and not numpy.array(matches['match'][0].isresolved(matchdata['matchsurvey'],matchdata['matchsurvey'].sigma)).all():
+            if len(matches['match'])==1 and not numpy.array(matches['source'].isresolved(matchdata['sourcesurvey'])).all() and not numpy.array(matches['match'][0].isresolved(matchdata['matchsurvey'])).all():
                 #Point source
                 ps_matches.append(matches)
                 ps_flux_source.append(matches['source'].flux)
@@ -699,18 +703,18 @@ class external_cat:
                     ps_ids.append(str(matches['source'].id))
                 ps_ramatch.append(matches['source'].position.ra_hms)
                 ps_decmatch.append(matches['source'].position.dec_hms)
-                ps_fluxerror_source.append(matches['source'].fluxerrorcondon(matchdata['sourcesurvey'].sigma,matchdata['sourcesurvey'])[1])
-                ps_fluxerror_match.append(matches['match'][0].fluxerrorcondon(matchdata['matchsurvey'].sigma,matchdata['matchsurvey'])[1])
+                ps_fluxerror_source.append(matches['source'].fluxerrorcondon(matchdata['sourcesurvey'])[1])
+                ps_fluxerror_match.append(matches['match'][0].fluxerrorcondon(matchdata['matchsurvey'])[1])
             elif len(matches['match'])>0:
                 #Extended source
                 es_matches.append(matches)
                 es_flux_source.append(matches['source'].flux)
-                es_fluxerror_source.append(matches['source'].fluxerrorcondon(matchdata['sourcesurvey'].sigma,matchdata['sourcesurvey'])[1])
+                es_fluxerror_source.append(matches['source'].fluxerrorcondon(matchdata['sourcesurvey'])[1])
                 sum=0.0
                 error=0.0
                 for match in matches['match']:
                     sum=sum+match.flux
-                    error=error+(match.fluxerrorcondon(matchdata['matchsurvey'].sigma,matchdata['matchsurvey'])[1])**2.0
+                    error=error+(match.fluxerrorcondon(matchdata['matchsurvey'])[1])**2.0
                 es_fluxerror_match.append(math.sqrt(error))
                 es_flux_match.append(sum)
                 es_beamdists.append(matches['source'].position.separation(self.saddata.pos)/60.0)
@@ -860,8 +864,8 @@ class external_cat:
             # Only single matches wanted.
             if len(matches['match'])==1:
                 # Point sources.
-                if not numpy.array(matches['source'].isresolved(matchdata['sourcesurvey'],matchdata['sourcesurvey'].sigma)).all():
-                    if not numpy.array(matches['match'][0].isresolved(matchdata['matchsurvey'],matchdata['matchsurvey'].sigma)).all():
+                if not numpy.array(matches['source'].isresolved(matchdata['sourcesurvey'])).all():
+                    if not numpy.array(matches['match'][0].isresolved(matchdata['matchsurvey'])).all():
                         # >15 sigma sources (more position accuracy)
                         if matches['source'].pflux>(posnnumsigma*matchdata['sourcesurvey'].sigma):
                             if matches['match'][0].pflux>(posnnumsigma*matchdata['matchsurvey'].sigma):
@@ -872,8 +876,8 @@ class external_cat:
                                 raoffs.append(matches['source'].position.raoff(matches['match'][0].position))
                                 decoffs.append(matches['source'].position.decoff(matches['match'][0].position))
                                 beamdists.append(matches['source'].position.separation(self.saddata.pos)/60.0)
-                                sourceerror=matches['source'].posnerrorcondon(matchdata['sourcesurvey'].sigma,matchdata['sourcesurvey'])
-                                matcherror=matches['match'][0].posnerrorcondon(matchdata['matchsurvey'].sigma,matchdata['matchsurvey'])
+                                sourceerror=matches['source'].posnerrorcondon(matchdata['sourcesurvey'])
+                                matcherror=matches['match'][0].posnerrorcondon(matchdata['matchsurvey'])
                                 raerrors.append(sqrt((sourceerror[0]**2.0) + (matcherror[0]**2.0)))
                                 decerrors.append(sqrt((sourceerror[1]**2.0) + (matcherror[1]**2.0)))
                                 
@@ -984,8 +988,6 @@ class external_cat:
         return plotsmade
 
 
-
-
 UNITSRE = re.compile('^Fluxes expressed in units of *([A-Za-z/]+)$')
 DATARE = re.compile(' *[0-9]')
 SEPARATOR = ' '
@@ -1002,15 +1004,15 @@ ALLFIELDS = ['ra', 'dec', 'num', 'rah', 'ram', 'ras',
              'xpix', 'ypix', 'maxresid', 'mosaic']
 
 
-ALLFORMATS = ['%09.5f', '%+10.5f', '%5d', '%02d', '%02d', '%5.2f', '%3s', '%02d', '%4.1f',
-             '%1s', '%10.5f', '%9.5f', '%10.5f', '%9.5f', '%4.2f', '%4.2f',
+ALLFORMATS = ['%10.6f', '%+11.6f', '%5d', '%02d', '%02d', '%7.4f', '%3s', '%02d', '%5.2f',
+             '%1s', '%11.6f', '%10.6f', '%11.6f', '%10.6f', '%4.2f', '%4.2f',
              '%5.2f', '%5.2f', '%6.2f',
              '%4.2f', '%4.2f', '%2d',
              '%5.2f', '%5.2f', '%6.2f',
              '%5.2f', '%5.2f', '%6.2f',
              '%5.2f', '%5.2f', '%6.2f',
              '%5.2f', '%5.2f', '%6.2f',
-             '%6.1f', '%6.1f', '%6.4f', '%s']
+             '%6.1f', '%6.1f', '%8.6f', '%s']
 
 ALLNULLS =  [None, None, None, None, None, None, None, None, None,
              '%c', None, '%c', None, '%c', '%c', '%c',
@@ -1060,7 +1062,11 @@ def convertunits(str):
   elif str == 'RATIO':
     return 1.0
   elif str == 'UNDEFINE':
+    return 1.0e3
+  elif str == 'milliUNDEFINE':
     return 1.0
+  elif str == 'microUNDEFINE':
+    return 1.0e-3
   else:
     raise 'Unknown flux units of "%s"' % str
 
@@ -1233,7 +1239,6 @@ class sad_catalogue:
       decsize = fabs(sizedata[2]-sizedata[3])
       self.imsize = max(rasize,decsize)*3600.0/2
 
-      
       for line in saddata.data:
         source=str(line).split()
         discard=False
@@ -1263,7 +1268,6 @@ class sad_catalogue:
       # Now set up an array of radio_source objects- which will be the
       # main storage for the catalogue data.
       tempsourcedata=self.survey.makearray(self)
-
       # Check which sources are above the flux limit specified in CATparams
       # and discard those that arent.
       self.sourcedata=[]
@@ -1293,9 +1297,6 @@ class sad_catalogue:
       #catfilename = random_filename(length=8,suffix='.cat')
       catfile = open(filename,mode='w')
       for num,source in enumerate(self.rawdata):
-        # Get the local rms noise.
-        localrms = pixinterp(float(source[34]),float(source[35]),self.rmsdata)*1000.0
-        localmean = pixinterp(float(source[34]),float(source[35]),self.meandata)*1000.0
         sourcedata = self.sourcedata[num]
 
         # Sad Source number
@@ -1311,25 +1312,25 @@ class sad_catalogue:
 
         # RA and Dec. Error
         catfile.write('{0:05.2f} {1:05.2f}   '
-                      .format(*sourcedata.posnerrorcondon(localrms,self.survey))) 
+                      .format(*sourcedata.posnerrorcondon(self.survey))) 
 
-        peakerr,interr = sourcedata.fluxerrorcondon(localrms,self.survey)
+        peakerr,interr = sourcedata.fluxerrorcondon(self.survey)
 
         # Peak Flux and its error
-        catfile.write('{0:10.5f} {1:9.5f}  '
+        catfile.write('{0:12.7f} {1:11.7f}  '
                       .format(sourcedata.pflux,peakerr))
         
         # Total Flux and its error
-        catfile.write('{0:10.5f} {1:9.5f}    '
+        catfile.write('{0:12.7f} {1:11.7f}    '
                       .format(sourcedata.flux,interr))
 
         # Fitted source size
         catfile.write('{0:6.2f} {1:6.2f} {2:6.2f}  '
-                      .format(sourcedata.maj,sourcedata.min,sourcedata.pa))
+                      .format(sourcedata.maj,sourcedata.min,sourcedata.pa%180.0))
         
         # Fitted source size errors
         catfile.write('{0:5.2f} {1:5.2f} {2:2d}    '
-                      .format(*sourcedata.sizeerrorcondon(localrms,self.survey)))
+                      .format(*sourcedata.sizeerrorcondon(self.survey)))
 
         # Pixel Position in image
         catfile.write('{0:6.1f} {1:6.1f}  '
@@ -1339,8 +1340,8 @@ class sad_catalogue:
         catfile.write(self.fitsfile)
 
         # Local mean and local rms
-        catfile.write('{0:9.4f} {1:7.4f}\n'
-                      .format(localrms,localmean))
+        catfile.write('{0:11.6f} {1:11.6f}\n'
+                      .format(sourcedata.locrms,sourcedata.locmean))
 
                             
       catfile.close()

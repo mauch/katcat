@@ -182,6 +182,8 @@ def getdiameter(tele='GMRT'):
     if tele == 'KAT-7':
         # KAT-7 7 antennas 12 m diameter 
         diameter = 12.
+    if tele == 'MeerKAT':
+        diameter = 13.5
     #AUTO KAT-7
     diameter = 12.
     return(diameter)
@@ -261,16 +263,16 @@ def makeaipsimage(data):
         image = AIPSImage(data[0],data[1],data[2],data[3])
 	return image
 
-def makeobitimage(data,err):
+def makeobitimage(data,err, check=True):
 	
-	image = Image.newPAImage(data[0],data[0],data[1],data[2],data[3],True,err)
+	image = Image.newPAImage(data[0],data[0],data[1],data[2],data[3],check,err)
 	return image
 #
 # Given an x,y pixel position in an aips image (aipsdata),
 # bilinearlly interpolate the value of the image pixel at
 # x,y.
 #
-def pixinterp(pixx,pixy,imagedata):
+def pixinterpold(pixx,pixy,imagedata):
 
     err=OErr.OErr()
     image = makeobitimage(imagedata,err)
@@ -278,29 +280,33 @@ def pixinterp(pixx,pixy,imagedata):
     image.Read(err)
     pixels=image.FArray
     
-    values=numpy.zeros((16,))
-    points=numpy.zeros((16,2,))
+    values=numpy.zeros((25,))
+    points=numpy.zeros((25,2,))
     nloop=-1
-    for x in range(int(pixx-2),int(pixx+2)):
-        for y in range(int(pixy-2),int(pixy+2)):
+    for x in range(int(pixx-3),int(pixx+2)):
+        for y in range(int(pixy-3),int(pixy+2)):
             nloop+=1
             values[nloop] = pixels.get(x,y)
             points[nloop] = [x,y]
-    #brcval = pixels.get(int(pixx),int(pixy)-1)
-    #tlcval = pixels.get(int(pixx)-1,int(pixy))
-    #trcval = pixels.get(int(pixx),int(pixy))
-    
-    #points=[[int(pixx)-1,int(pixy)-1],[int(pixx),int(pixy)-1],[int(pixx)-1,int(pixy)],[int(pixx),int(pixy)]]
-    #values=[blcval,brcval,tlcval,trcval]
-    #print blcval,brcval,tlcval,trcval
     val=interpolate.griddata(points,values,[pixx-1,pixy-1],method='cubic')
-    #residx = pixx-floor(pixx)
-    #residy = pixy-floor(pixy)
-    #print int(pixx),int(pixy),int(pixx)+1,int(pixy)+1
-    #print blcval,brcval,tlcval,trcval
-    #y1 = ((blcval-brcval)*residx)+brcval
-    #y2 = ((tlcval-trcval)*residx)+trcval
-    #val = ((y1-y2)*residy)+y2
+    return val[0]
+
+#
+# Given an x,y pixel position in an aips image (aipsdata),
+# bilinearlly interpolate the value of the image pixel at
+# x,y.
+#
+def pixinterp(pixx,pixy,imagedata):
+    
+    values=numpy.zeros((25,))
+    points=numpy.zeros((25,2,))
+    nloop=-1
+    for x in range(int(pixx-3),int(pixx+2)):
+        for y in range(int(pixy-3),int(pixy+2)):
+            nloop+=1
+            values[nloop] = imagedata[y, x]
+            points[nloop] = [y, x]
+    val=interpolate.griddata(points,values,[pixy-1 ,pixx-1],method='cubic')
     return val[0]
 #
 # Fit  the peak flux of a source that has 
@@ -645,7 +651,7 @@ def imsad(indata,cutoff,outname='',uppercut=[],blc=[0,0],trc=[0,0],gain=0.3,icut
     if resid>0:
         residimage   = makeaipsimage(residdata)
         task.outdata = residimage
-    task.ngauss      = 40000
+    task.ngauss      = 80000
     task.icut        = icut
     task.sort        = 'RA'
     if outname=='':
@@ -667,6 +673,104 @@ def imsad(indata,cutoff,outname='',uppercut=[],blc=[0,0],trc=[0,0],gain=0.3,icut
     task.pbparm      = AIPSList([0,0,0,0,0,0,0])
     task.go()
 
+#
+# Wrapper for the AIPS task imsad with an rms image:
+# inimage:   input image to catalogue
+# inrmsimage: input rms map for imsad
+# cutoff:    cutoff level for gaussians
+# outname:   name of sad output file (written to PWD)
+# highcut:   list of upper cutoff levels above cutoff for gaussians
+# blc:       blc of fit region
+# trc:       trc of fit region
+# gain:      AIPS gain
+# icut:      retry level for AIPS
+# dowidth:   fit widths (>0 => yes)
+# maxwidth:  maximum size if fitting widths ( 0 => none)
+# resid:     keep residual image (>0 => yes)
+# residdata: data for residual image if resid>0
+#
+def imsadrms(indata,inrmsimage,cutoff,outname='',uppercut=[],blc=[0,0],trc=[0,0],gain=0.3,icut=0.1,dowidth=1,maxwidth=5,resid=0,residdata=[]):
+
+    task             = AIPSTask('sad')
+    inimage = makeaipsimage(indata)
+    in2image = makeaipsimage(inrmsimage)
+    task.indata      = inimage
+    task.in2data     = in2image
+    task.blc         = AIPSList(blc)
+    task.trc         = AIPSList(trc)
+    if len(uppercut)>0:
+        task.cparm   = AIPSList(uppercut+[cutoff,0])
+    else:
+        task.cparm   = AIPSList([cutoff,0])
+    task.doresid     = resid
+    if resid>0:
+        residimage   = makeaipsimage(residdata)
+        task.outdata = residimage
+    task.ngauss      = 80000
+    task.icut        = icut
+    task.sort        = 'RA'
+    if outname=='':
+        task.docrt   = 0
+        task.fitout  = ''
+    else:
+        task.docrt   = 132
+        task.fitout  = outname
+    task.outvers     = 0
+    task.doall       = 1
+    if dowidth==1:
+        width = [[1,1,1],[1,1,1],[1,1,1],[1,1,1]]
+    else:
+        width = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
+    task.dowidth     = AIPSList(width)
+    task.gain        = gain
+    task.dparm       = AIPSList([cutoff, 0, 0.0, maxwidth, -1, 0, cutoff, 0, 2, 0])
+    task.prtlev      = 0
+    task.pbparm      = AIPSList([0,0,0,0,0,0,0])
+    task.go()
+
+#
+# Wrapper for the Obit task findsou:
+# inimage:   input image to catalogue
+# cutoff:    cutoff level for gaussians
+# outname:   name of output file (written to PWD)
+# highcut:   list of upper cutoff levels above cutoff for gaussians
+# blc:       blc of fit region
+# trc:       trc of fit region
+# gain:      gain
+# icut:      retry level
+# dowidth:   fit widths (>0 => yes)
+# maxwidth:  maximum size if fitting widths ( 0 => none)
+# resid:     keep residual image (>0 => yes)
+# residdata: data for residual image if resid>0
+#
+def findsou(indata,cutoff,err,outname='',uppercut=[],blc=[0,0],trc=[0,0],gain=0.3,icut=0.1,dowidth=1,maxwidth=5,resid=0,residdata=['RESID', 'IM', 1, 1]):
+
+    task             = OTObit.ObitTask('FndSou')
+    task._max_dict['NGauss'] = 100000.0
+    inimage          = makeobitimage(indata, err)
+    OTObit.setname(inimage, task)
+    task.BLC         = blc
+    task.TRC         = trc
+    task.CutOff      = cutoff
+    task.doResid     = bool(resid)
+    if resid>0:
+        residimage   = makeobitimage(residdata, err, check=False)
+        OTObit.setoname(residimage, task)
+    task.NGauss      = 100000
+    task.NPass       = 1
+    task.Retry       = icut
+    task.Sort        = 'X'
+    if outname=='':
+        task.OutPrint  = ''
+    else:
+        task.OutPrint  = outname
+    task.doMult       = True
+    task.doWidth     = bool(dowidth)
+    task.Gain        = gain
+    task.Parms       = [cutoff, float(maxwidth), 2.0, 1.0, 2.0, -1, 0.1]
+    task.prtLv      = 1
+    task.nThreads   = 8
+    task.go()
 #
 # Copy an aips cataloge image from arg1 to arg2
 #
@@ -832,7 +936,7 @@ def func(x,a,b):
 # 'boxsize' of the primary beam), in increasing rms steps until all the nearby
 # peaks are removed. The function will return a dynamic range determination
 # for each bright source in 'sources'
-def getdr(brightcatalogue,imagedata,rms):
+def getdr(brightcatalogue,imagedata,rms,err,blc=[0,0],trc=[0,0]):
 
     from CATparams import *
     from catalogue import *    
@@ -851,8 +955,8 @@ def getdr(brightcatalogue,imagedata,rms):
 
     # Run IMSAD with cutoff=3 to get initial source estimates.
     sadfilename = random_filename(length=8,suffix='.sad')
-    imsad(imagedata,999.0,uppercut=[],
-          outname=sadfilename,maxwidth=maxfitwidth*beammajpix,gain=gain,icut=highcut*ifact)
+    imsad(imagedata,4.0*rms,uppercut=[8.0*rms],
+          outname=sadfilename,maxwidth=maxfitwidth*beammajpix,gain=gain,icut=highcut*ifact,blc=blc,trc=trc)
     sadfile = open(sadfilename, 'r')
     allsources = file(sadfile)
     sadfile.close()
@@ -873,7 +977,6 @@ def getdr(brightcatalogue,imagedata,rms):
     alloffsets = [pixoffset(*(list(posn[0:2]) + list(imhead['crpix'][0:2]))) for posn in allposns]
     alldata,allbins=numpy.histogram(numpy.array(alloffsets),numpy.array(allbins))
     allareas=(2.0*acos(0.0)*allbins[1:]**2.0)-(2.0*acos(0.0)*(allbins[:-1])**2.0)
-    fig = pylab.figure()
     alldataperarea=alldata/allareas
     try:	
         fitp,fitc=curve_fit(func,(numpy.array(allbins[1:])-(widthpixels/2.0))[numpy.nonzero(alldata)],numpy.log10(alldataperarea[numpy.nonzero(alldata)]))    
@@ -881,7 +984,7 @@ def getdr(brightcatalogue,imagedata,rms):
         fitp=[0,0]
     for rawbrightsource,brightsource in zip(brightcatalogue.rawdata,brightcatalogue.sourcedata):
         # is it resolved and isolated
-        if brightsource.isresolved(brightcatalogue.survey,rms) and (brightsource.isisolated(brightcatalogue.sourcedata,widtharcsec)==0):            
+        if brightsource.isresolved(brightcatalogue.survey) and (brightsource.isisolated(brightcatalogue.sourcedata,widtharcsec)==0):            
 
             xpix = float(rawbrightsource[-4])
             ypix = float(rawbrightsource[-3])
@@ -931,11 +1034,10 @@ def getdr(brightcatalogue,imagedata,rms):
                 if offset<thisradius and offset > 0.01:
                     alllocaloff.append(offset)
                     if allflux[num]>maxpeak and allflux[num]<peaklim:
-                        maxpeak=allflux[num]            
+                        maxpeak=allflux[num]
             if maxpeak>0.0:
                 thisdr=flux/(maxpeak/5.0)
                 alldr.append(thisdr)
-
     allavradius=numpy.average(allradius)
     allmedradius=numpy.median(allradius)
     
