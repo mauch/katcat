@@ -651,7 +651,7 @@ def imsad(indata,cutoff,outname='',uppercut=[],blc=[0,0],trc=[0,0],gain=0.3,icut
     if resid>0:
         residimage   = makeaipsimage(residdata)
         task.outdata = residimage
-    task.ngauss      = 80000
+    task.ngauss      = 40000
     task.icut        = icut
     task.sort        = 'RA'
     if outname=='':
@@ -706,7 +706,7 @@ def imsadrms(indata,inrmsimage,cutoff,outname='',uppercut=[],blc=[0,0],trc=[0,0]
     if resid>0:
         residimage   = makeaipsimage(residdata)
         task.outdata = residimage
-    task.ngauss      = 80000
+    task.ngauss      = 40000
     task.icut        = icut
     task.sort        = 'RA'
     if outname=='':
